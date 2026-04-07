@@ -10,13 +10,24 @@ use App\Http\Controllers\Api\sellerController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\SubCategoryController;
+use App\Http\Controllers\Api\CartController;
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
     Route::post('/logout', [AuthController::class, 'logout']);
+    
+    // Cart Routes
+    Route::get('/cart', [CartController::class, 'index']);
+    Route::post('/cart', [CartController::class, 'store']);
+    Route::put('/cart/{cartItemId}', [CartController::class, 'update']);
+    Route::delete('/cart/{cartItemId}', [CartController::class, 'destroy']);
+    Route::delete('/cart-clear', [CartController::class, 'clear']);
+    Route::get('/cart/validate', [CartController::class, 'validateCart']);
+    
     Route::apiResource('orders', OrderController::class)->except(['index','update']);
+    Route::post('/orders/from-cart', [OrderController::class, 'createFromCart']);
     Route::get('/my-orders',[OrderController::class, 'myOrders']);
     Route::delete('/orders/{slug}', [OrderController::class, 'destroy']);
     Route::get('/orders/{slug}', [OrderController::class, 'show']);

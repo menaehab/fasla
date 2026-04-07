@@ -66,8 +66,8 @@ class ProductController extends Controller
         $products = Product::where('sub_category_id', $subCategory->id)->latest()->paginate(10);
 
         if (!$products->isEmpty()) {
-            $data = [
-                'products' => ProductResource::collection($products),
+            return response()->json([
+                'data' => ProductResource::collection($products),
                 'pagination' => [
                     'total' => $products->total(),
                     'current_page' => $products->currentPage(),
@@ -77,8 +77,7 @@ class ProductController extends Controller
                         'last_page' => $products->url($products->lastPage()),
                     ]
                 ]
-            ];
-            return response()->json($data);
+            ]);
         }
         return response()->json(['message' => 'No products found'], 404);
     }

@@ -15,9 +15,9 @@ class CategoryController extends Controller
      */
     public function index()
     {
-        $categories = Category::all();
+        $categories = Category::with('subCategories')->get();
         if (count($categories) > 0) {
-            return response()->json(CategoryResource::collection($categories),200);
+            return response()->json(['data' => CategoryResource::collection($categories)], 200);
         }
         return response()->json(['message' => 'No categories found'], 200);
     }

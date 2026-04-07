@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Cart;
 use App\Enum\OrderStatusEnum;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use App\Http\Resources\OrderResource;
 use App\Http\Requests\StoreOrderRequest;
+use App\Http\Requests\CreateOrderFromCartRequest;
 use App\Http\Requests\UpdateOrderStatusRequest;
 
 class OrderController extends Controller
@@ -116,6 +119,92 @@ class OrderController extends Controller
         $order->update(['total_price' => $totalPrice]);
 
         return response()->json(new OrderResource($order), 201);
+    }
+
+    /**
+     * Create order from cart.
+     */
+    public function createFromCart(CreateOrderFromCartRequest $request)
+    {
+        $user = Auth::user();
+        $cart = Cart::with('cartItems.product')->where('user_id', $user->id)->first();
+
+        if (!$cart || $cart->cartItems->count() === 0) {
+            return response()->json(['message' => 'السلة فارغة'], 400);
+        }
+
+        // Validate all items before creating order
+        $unavailableItems = [];
+        foreach ($cart->cartItems as $item) {
+            if (!$item->product) {
+                $unavailableItems[] = [
+                    'cart_item_id' => $item->id,
+                    'message' => 'المنتج لم يعد متوفراً'
+                ];
+            } elseif ($item->product->quantity < $item->quantity) {
+                $unavailableItems[] = [
+                    'cart_item_id' => $item->id,
+                    'product_name' => $item->product->name,
+                    'requested_quantity' => $item->quantity,
+                    'available_quantity' => $item->product->quantity,
+                    'message' => 'الكمية المطلوبة غير متوفرة'
+                ];
+            }
+        }
+
+        if (count($unavailableItems) > 0) {
+            return response()->json([
+                'message' => 'بعض المنتجات في السلة غير متوفرة',
+                'unavailable_items' => $unavailableItems
+            ], 400);
+        }
+
+        // Create order in transaction
+        DB::beginTransaction();
+        try {
+            $totalPrice = 0;
+
+            $order = Order::create([
+                'user_id' => $user->id,
+                'shipping_address' => $request->shipping_address,
+                'total_price' => 0,
+                'status' => OrderStatusEnum::PENDING->value,
+            ]);
+
+            foreach ($cart->cartItems as $item) {
+                $product = $item->product;
+                $subtotal = $item->price * $item->quantity;
+                $totalPrice += $subtotal;
+
+                $order->orderItems()->create([
+                    'product_id' => $product->id,
+                    'quantity' => $item->quantity,
+                    'seller_id' => $product->seller_id,
+                    'price' => $item->price,
+                ]);
+
+                $product->decrement('quantity', $item->quantity);
+            }
+
+            $order->update(['total_price' => $totalPrice]);
+
+            // Clear cart after successful order
+            $cart->cartItems()->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'تم إنشاء الطلب بنجاح',
+                'order' => new OrderResource($order)
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'حدث خطأ أثناء إنشاء الطلب',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
 
